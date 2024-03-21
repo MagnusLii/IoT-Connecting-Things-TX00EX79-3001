@@ -17,7 +17,7 @@ app.get('/:name', (req, res) => {
     var num_rand = Math.floor(Math.random() * (num_max - num_min + 1)) + num_min;
     console.log('GET /:name')
     const name = req.params.name;
-    const num = req.query.number;
+    const num = parseInt(req.query.number);
     
     console.log('name:', name);
     console.log('num:', num);
@@ -26,7 +26,7 @@ app.get('/:name', (req, res) => {
     if (num < num_min || num > num_max || isNaN(num)) {
         res.status(200).send('Hey ' + name + '!' + ' Read the instructions!');
         }
-    else if (num == num_rand) {
+    else if (num === num_rand) {
         res.status(200).send('Hey ' + name + '!' + ' Congratulations! You guessed the right number!');
     } 
     else {
