@@ -9,7 +9,7 @@ var num_min = 1;
 var num_max = 10;
 
 app.get('/', (req, res) => {
-    console.log('GET /')
+    console.log('GET /').
     res.sendFile(__dirname + '/index.html');
 });
 
