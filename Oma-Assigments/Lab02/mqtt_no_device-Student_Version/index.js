@@ -5,6 +5,7 @@ const util = require('util');
 const fs = require('fs');
 const bodyParser = require('body-parser');
 const app = express();
+const http = require('http');
 
 const readFile = util.promisify(fs.readFile);
 const writeFile = util.promisify(fs.writeFile);
@@ -41,6 +42,13 @@ mqtt_client.on('error', (error) => {
 
 // Handle when a subscribed message comes in (message event)
 mqtt_client.on('message', (topic, message) => {
+
+    fetch(`http://${mqtt_client_address}:3000/`,{
+        method: 'POST',
+        body: message,
+        headers: { 'Content-type': 'application/json; charset=UTF-8' },
+    })
+
     console.log('Received message:', message.toString(), 'from topic:', topic);
 });
 
@@ -80,6 +88,12 @@ app.post('/', async (req, res) => {
     try {
         const messages = await read();
         const newMessage = req.body;
+
+        if (!newMessage.topic || !newMessage.msg) {
+            console.log('Invalid message format');
+            return res.status(400).send('Invalid message format'); // mby return something snarkier
+        }
+
         const topic = newMessage.topic;
         newMessage.id = Math.random().toString(36).substr(2, 9);
         messages.push(newMessage); // Add to json file
