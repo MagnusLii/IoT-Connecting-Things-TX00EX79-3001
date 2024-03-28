@@ -1,4 +1,5 @@
 const express = require('express');
+const uuid = require('uuid');
 const mqtt = require('mqtt');
 const path = require('path');
 const util = require('util');
@@ -11,11 +12,16 @@ const readFile = util.promisify(fs.readFile);
 const writeFile = util.promisify(fs.writeFile);
 // Create variables for MQTT use here
 
-const mqtt_client_address = 'localhost';
-const mqtt_client_port = '1883';
+const topic_to_sub_to = '#';
+const clientId = `mqtt_${Math.random().toString(16).slice(3)}`
+const mqtt_client_address = '18.198.188.151';
+const mqtt_client_port = '21883';
 const mqtt_options = {
     clean: true,
-    connectTimeout: 4000,
+    connectTimeout: 40000,
+    clientId: clientId,
+    reconnectPeriod: 40000,
+    rejectUnauthorized: false,
 };
 
 app.use(bodyParser.json());
@@ -28,11 +34,12 @@ function write(data, filePath = './message.json') {
 
 // create an MQTT instance
 const mqtt_client = mqtt.connect(`mqtt://${mqtt_client_address}:${mqtt_client_port}`, mqtt_options);
+//const mqtt_client = mqtt.connect(`mqtt://18.198.188.151:21883`);
 
 // Check that you are connected to MQTT and subscribe to a topic (connect event)
 mqtt_client.on('connect', () => {
     console.log('Connected to MQTT');
-    mqtt_client.subscribe('topic');
+    mqtt_client.subscribe(`${topic_to_sub_to}`); // Subscribe to the topic
 });
 
 // handle instance where MQTT will not connect (error event)
@@ -43,11 +50,39 @@ mqtt_client.on('error', (error) => {
 // Handle when a subscribed message comes in (message event)
 mqtt_client.on('message', (topic, message) => {
 
-    fetch(`http://${mqtt_client_address}:3000/`,{
+    try {
+
+        read().then(data => {
+
+        const newMessage = JSON.parse(message.toString());
+
+        if (!newMessage.topic || !newMessage.msg) {
+            console.log('Invalid message format');
+            return res.status(400).send('Invalid message format'); // mby return something snarkier
+        }
+
+        newMessage.id = Math.random().toString(36).substr(2, 9);
+        data.push(newMessage); // Add to json file
+        write(data);
+    }).catch(e => {
+        //not doing anything
+    });
+    } catch (error) {
+        //console.error('Invalid JSON:', error);
+        return;
+    }
+
+    /*
+    fetch(`http://127.0.0.1:3000/`,{
         method: 'POST',
         body: message,
         headers: { 'Content-type': 'application/json; charset=UTF-8' },
-    })
+    }).catch(error => {
+        // Handle error here
+        //console.error('Error:', error);
+    });
+    */
+   
 
     console.log('Received message:', message.toString(), 'from topic:', topic);
 });
@@ -89,10 +124,12 @@ app.post('/', async (req, res) => {
         const messages = await read();
         const newMessage = req.body;
 
+
         if (!newMessage.topic || !newMessage.msg) {
             console.log('Invalid message format');
             return res.status(400).send('Invalid message format'); // mby return something snarkier
         }
+
 
         const topic = newMessage.topic;
         newMessage.id = Math.random().toString(36).substr(2, 9);
