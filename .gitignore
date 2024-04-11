@@ -5,3 +5,9 @@ Oma-Assigments/Lab02/mqtt_no_device-Student_Version/message.json
 .vscode
 build
 /src/*
+/display
+/mqtt
+/modbus
+/node_modules
+/paho.mqtt.embedded-c
+/uart
