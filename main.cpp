@@ -36,51 +36,148 @@
 #define USE_MQTT
 #define USE_SSD1306
 
-
-#ifdef USE_SSD1306
-static const uint8_t raspberry26x32[] =
-        {0x0, 0x0, 0xe, 0x7e, 0xfe, 0xff, 0xff, 0xff,
-         0xff, 0xff, 0xfe, 0xfe, 0xfc, 0xf8, 0xfc, 0xfe,
-         0xfe, 0xff, 0xff,0xff, 0xff, 0xff, 0xfe, 0x7e,
-         0x1e, 0x0, 0x0, 0x0, 0x80, 0xe0, 0xf8, 0xfd,
-         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,0xff, 0xff,
-         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd,
-         0xf8, 0xe0, 0x80, 0x0, 0x0, 0x1e, 0x7f, 0xff,
-         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-         0xff, 0xff, 0xff, 0xff, 0x7f, 0x1e, 0x0, 0x0,
-         0x0, 0x3, 0x7, 0xf, 0x1f, 0x1f, 0x3f, 0x3f,
-         0x7f, 0xff, 0xff, 0xff, 0xff, 0x7f, 0x7f, 0x3f,
-         0x3f, 0x1f, 0x1f, 0xf, 0x7, 0x3, 0x0, 0x0 };
-#endif
+static const char *topic = "magnus/pico/listener/LED";
 
 void messageArrived(MQTT::MessageData &md) {
     MQTT::Message &message = md.message;
 
+    // Print the message
     printf("Message arrived: qos %d, retained %d, dup %d, packetid %d\n",
            message.qos, message.retained, message.dup, message.id);
     printf("Payload %s\n", (char *) message.payload);
+
+    // Parse the message
+    std::map<std::string, std::string> payloadMap = json_parser(message);
+
+    // Handle the message
+    handle_message(payloadMap);
 }
 
-static const char *topic = "test-topic";
+std::map<std::string, std::string> json_parser(MQTT::Message &message) {
+    std::string payloadStr((char*)message.payload, message.payloadlen);
+    std::map<std::string, std::string> payloadMap;
+    std::string key;
+    std;;string value;
+
+    for (int i = 0; i < payloadStr.length(); i++) {
+        if (payloadStr[i] == '"') {
+            i++;
+            
+            // Get key.
+            while (payloadStr[i] != '"') {
+                key += payloadStr[i];
+                i++;
+            }
+            i++;
+
+            // skip anything between key and value
+            while (payloadStr[i] != '"') {
+                i++;
+            }
+            i++;
+            i++;
+
+            // Get value.
+            while (payloadStr[i] != '"') {
+                value += payloadStr[i];
+                i++;
+            }
+
+            // Store and clear.
+            payloadMap[key] = value;
+            key.clear();
+            value.clear();
+        }
+    }
+
+    return payloadMap;
+}
+
+// Commands: "ON", "OFF", "TOGG".
+void handle_message(std::map<std::string, std::string> payloadMap) {
+    for (auto const& [key, value] : payloadMap) {
+        if (key == "LED1") {
+            if (value == "ON") {
+                gpio_put(22, 1);
+            } else if (value == "OFF") {
+                gpio_put(22, 0);
+            } else if (value == "TOGG") {
+                gpio_put(22, !gpio_get(22));
+            }
+        } else if (key == "LED2") {
+            if (value == "ON") {
+                gpio_put(21, 1);
+            } else if (value == "OFF") {
+                gpio_put(21, 0);
+            } else if (value == "TOGG") {
+                gpio_put(21, !gpio_get(21));
+            }
+        } else if (key == "LED3") {
+            if (value == "ON") {
+                gpio_put(20, 1);
+            } else if (value == "OFF") {
+                gpio_put(20, 0);
+            } else if (value == "TOGG") {
+                gpio_put(20, !gpio_get(20));
+            }
+        }
+    }
+    return;
+}
+
+void publishMessage(MQTT::Client<MQTT::Network, MQTT::Timer, 256, 5> &client, std::string topic, std::string payload) {
+    MQTT::Message message;
+    message.qos = MQTT::QOS0;
+    message.retained = false;
+    message.dup = false;
+    message.payload = (void *) payload.c_str();
+    message.payloadlen = payload.length() + 1;
+    int rc = client.publish(topic, message);
+    printf("publishMessage rc=%d\n", rc);
+}
+
+std::string map_to_string(std::map<std::string, std::string> &map) {
+    std::string josn_str = "{";
+    for (auto const& [key, value] : map) {
+        josn_str += "\"" + key + "\":\"" + value + "\",";
+    }
+    josn_str.pop_back();
+    josn_str += "}";
+    
+    printf("map_to_string() string: %s\n", josn_str.c_str());
+
+    return josn_str;
+}
 
 int main() {
 
-    const uint led_pin = 22;
-    const uint button = 9;
+    const uint led1 = 22;
+    const uint led2 = 21;
+    const uint led3 = 20;
+    const uint button1 = 9;
+    const uint button2 = 8;
+    const uint button3 = 7;
 
-    // Initialize LED pin
-    gpio_init(led_pin);
-    gpio_set_dir(led_pin, GPIO_OUT);
+    // Initialize LEDs
+    for (auto pin : {led1, led2, led3}) {
+        gpio_init(pin);
+        gpio_set_dir(pin, GPIO_OUT);
+    }
 
-    gpio_init(button);
-    gpio_set_dir(button, GPIO_IN);
-    gpio_pull_up(button);
+    // Initialize buttons
+    for (auto pin : {button1, button2, button3}) {
+        gpio_init(pin);
+        gpio_set_dir(pin, GPIO_IN);
+        gpio_pull_up(pin);
+    }
 
     // Initialize chosen serial port
     stdio_init_all();
-
     printf("\nBoot\n");
+
+
+/*
+    // Init OLED
 #ifdef USE_SSD1306
     // I2C is "open drain",
     // pull ups to keep signal high when no data is being sent
@@ -90,9 +187,10 @@ int main() {
     ssd1306 display(i2c1);
     display.fill(0);
     display.text("Hello", 0, 0);
-
 #endif
+*/
 
+// Connect to MQTT broker
 #ifdef USE_MQTT
     IPStack ipstack("SmartIotMQTT", "SmartIot"); // example
     auto client = MQTT::Client<IPStack, Countdown>(ipstack);
@@ -101,8 +199,6 @@ int main() {
     if (rc != 1) {
         printf("rc from TCP connect is %d\n", rc);
     }
-
-
 
     // Generate a random number between 1 and 100000
     int randomNumber = (rand() % 100000) + 1;
@@ -133,8 +229,13 @@ int main() {
     auto mqtt_send = make_timeout_time_ms(2000);
     int mqtt_qos = 0;
     int msg_count = 0;
+
+    // Publish message to verify connection
+    publishMessage(client, "magnus/pico/listener/verifyconnection", "Magnus pico connected");
+    printf("Publishing message: Magnus pico connected\n To topic: magnus/pico/listener/verifyconnection\n");
 #endif
 
+/*
 #ifdef USE_MODBUS
     auto uart{std::make_shared<PicoUart>(UART_NR, UART_TX_PIN, UART_RX_PIN, BAUD_RATE, STOP_BITS)};
     auto rtu_client{std::make_shared<ModbusClient>(uart)};
@@ -145,7 +246,26 @@ int main() {
     sleep_ms((100));
     produal.write(100);
 #endif
+*/
 
+    std::map <std::string, std::string> buttonMsgMap;
+    buttonMsgMap["topic"] = "magnus/pico/listener/button";
+    buttonMsgMap["msg"] = "My unique message";
+
+    // Main loop
+    while (true) {
+
+
+    }
+
+
+    return 0;
+}
+
+
+
+
+/*
     while (true) {
 #ifdef USE_MODBUS
         if (time_reached(modbus_poll)) {
@@ -214,7 +334,4 @@ int main() {
         client.yield(100); // socket that client uses calls cyw43_arch_poll()
 #endif
     }
-
-    return 0;
-}
-
+*/
