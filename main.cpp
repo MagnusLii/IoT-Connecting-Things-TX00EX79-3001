@@ -4,12 +4,12 @@
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include "hardware/timer.h"
+#include "hardware/adc.h"
 #include "uart/PicoUart.h"
 #include <map>
 
 #include <cstdlib>
 #include <ctime>
-
 #include "IPStack.h"
 #include "Countdown.h"
 #include "MQTTClient.h"

@@ -71,6 +71,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Link to pico_stdlib (gpio, time, etc. functions)
 target_link_libraries(${PROJECT_NAME} 
         pico_stdlib
+        hardware_adc
         hardware_i2c
         hardware_gpio
         pico_cyw43_arch_lwip_poll
