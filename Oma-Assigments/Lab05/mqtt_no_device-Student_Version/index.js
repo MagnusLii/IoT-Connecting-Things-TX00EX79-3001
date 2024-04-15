@@ -132,7 +132,7 @@ app.post('/', async (req, res) => {
         const topic = newMessage.topic;
         newMessage.id = Math.random().toString(36).substr(2, 9);
         messages.push(newMessage); // Add to json file
-        await write(messages);
+        //await write(messages);
         mqtt_client.publish(topic, JSON.stringify(newMessage)); // Publish to MQTT
         res.sendStatus(200);
     } catch (e) {
