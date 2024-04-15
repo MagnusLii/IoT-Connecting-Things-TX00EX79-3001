@@ -136,7 +136,7 @@ void publishMessage(MQTT::Client<MQTT::Network, MQTT::Timer, 256, 5> &client, st
     printf("publishMessage rc=%d\n", rc);
 }
 
-std::string map_to_string(std::map<std::string, std::string> &map) {
+std::string mapToString(std::map<std::string, std::string> &map) {
     std::string josn_str = "{";
     for (auto const& [key, value] : map) {
         josn_str += "\"" + key + "\":\"" + value + "\",";
@@ -144,7 +144,7 @@ std::string map_to_string(std::map<std::string, std::string> &map) {
     josn_str.pop_back();
     josn_str += "}";
     
-    printf("map_to_string() string: %s\n", josn_str.c_str());
+    printf("mapToString() string: %s\n", josn_str.c_str());
 
     return josn_str;
 }
@@ -255,9 +255,12 @@ int main() {
     // Main loop
     while (true) {
 
-
+        for (auto pin : {button1, button2, button3}) {
+            if (!gpio_get(pin)) {
+                publishMessage(client, buttonMsgMap["topic"], mapToString(buttonMsgMap));
+            }
+        }
     }
-
 
     return 0;
 }
