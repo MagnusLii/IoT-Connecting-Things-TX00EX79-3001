@@ -132,7 +132,7 @@ int main() {
 #endif
 
     // Init repeating timer
-    add_repeating_timer_ms(1000, read_cpu_temperature, NULL);
+    add_repeating_timer_ms(1000, alarm_callback, NULL);
 
     // Main loop
     while (true) {
@@ -372,7 +372,7 @@ std::string mapToString(std::map<std::string, std::string> &map) {
 }
 
 
-int read_cpu_temperature() {
+void read_cpu_temperature() {
     gpio_put(LED2, !gpio_get(LED2)); // Toggle LED2 on every read.
     adc_select_input(4); // Input 4 is the temp sensor.
 
@@ -384,6 +384,11 @@ int read_cpu_temperature() {
     // Convert the voltage to temperature. https://www.halvorsen.blog/documents/technology/iot/pico/pico_temperature_sensor_builtin.php
     previousCoreTemp = 27 - (voltage - 0.706) / 0.001721;
     
-    return 1; // Return 1 for repeating timer.
+    return;
 }
 
+
+bool alarm_callback(repeating_timer_t *rt) {
+    read_cpu_temperature();
+    return 1;
+}
