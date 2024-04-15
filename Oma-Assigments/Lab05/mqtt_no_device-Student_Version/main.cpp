@@ -17,8 +17,6 @@
 #include "ModbusRegister.h"
 #include "ssd1306.h"
 
-// We are using pins 0 and 1, but see the GPIO function select table in the
-// datasheet for information on which other pins can be used.
 #if 0
 #define UART_NR 0
 #define UART_TX_PIN 0
@@ -31,7 +29,6 @@
 
 #define BAUD_RATE 9600
 #define STOP_BITS 1 // for simulator
-//#define STOP_BITS 2 // for real system
 
 #define USE_MODBUS
 #define USE_MQTT
@@ -40,13 +37,157 @@
 #define SSID "Mgzz-57"
 #define PASSWD "557949122aA"
 
+#define ON 1
+#define OFF 0
+
+#define LED1 22
+#define LED2 21
+#define LED3 20
+
+#define BUTTON1 9
+#define BUTTON2 8
+#define BUTTON3 7
+
+#define ROT_BUTTON 12
+
+#define BUTTONS_LIST {BUTTON1, BUTTON2, BUTTON3, ROT_BUTTON}
+
 static const char *topic = "magnus/pico/listener/LED";
+
+float previousCoreTemp = 25.0; // Init here so it doesn't toggle the leds before the first read.
+float high_temp = 30.0;
+float low_temp = 25.0;
+bool publish_temp = false;
 
 void messageArrived(MQTT::MessageData &md);
 std::map<std::string, std::string> json_parser(MQTT::Message &message);
 void handle_message(std::map<std::string, std::string> payloadMap);
 void publishMessage(MQTT::Client<IPStack, Countdown> &client, std::string topic, std::string payload);
 std::string mapToString(std::map<std::string, std::string> &map);
+void handle_led(std::string value, int pin);
+void read_cpu_temperature();
+void handle_temp(std::string value);
+
+
+int main() {
+    printf("Boot\n");
+
+    const uint led1 = LED1;
+    const uint led2 = LED2;
+    const uint led3 = LED3;
+
+    const uint button1 = BUTTON1;
+    const uint button2 = BUTTON2;
+    const uint button3 = BUTTON3;
+
+    const uint rot_button = ROT_BUTTON;
+
+    // Initialize LEDs
+    for (auto pin : {led1, led2, led3}) {
+        gpio_init(pin);
+        gpio_set_dir(pin, GPIO_OUT);
+    }
+
+    // Initialize buttons
+    for (auto pin : {button1, button2, button3}) {
+        gpio_init(pin);
+        gpio_set_dir(pin, GPIO_IN);
+        gpio_pull_up(pin);
+    }
+
+    // Initialize chosen serial port
+    stdio_init_all();
+
+    // Init temp related stuff
+    adc_init();
+    adc_set_temp_sensor_enabled(true);
+
+// Connect to MQTT broker
+#ifdef USE_MQTT
+    IPStack ipstack(SSID, PASSWD); // example
+    auto client = MQTT::Client<IPStack, Countdown>(ipstack);
+
+    int rc = ipstack.connect("18.198.188.151", 21883);
+    if (rc != 1) {
+        printf("rc from TCP connect is %d\n", rc);
+    }
+
+    // Generate a random number between 1 and 100000
+    int randomNumber = (rand() % 100000) + 1;
+
+    printf("MQTT connecting\n");
+    MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
+    data.MQTTVersion = 3;
+    std::string clientId = "PicoW-sample" + std::to_string(randomNumber);
+    data.clientID.cstring = (char *)clientId.c_str();
+    data.username.cstring = (char *) "SmartIoT";
+    data.password.cstring = (char *) "SmartIoTMQTT";
+    rc = client.connect(data);
+    if (rc != 0) {
+        printf("rc from MQTT connect is %d\n", rc);
+        exit(-1);
+    }
+    printf("MQTT connected\n");
+
+    rc = client.subscribe(topic, MQTT::QOS0, messageArrived);
+    if (rc != 0) {
+        printf("rc from MQTT subscribe is %d\n", rc);
+        exit(-1);
+    }
+    printf("MQTT subscribed\n");
+
+    // Publish message to verify connection
+    publishMessage(client, "magnus/pico/listener/verifyconnection", "{\"topic\":\"magnus/pico/listener/verifyconnection\",\"msg\":\"Magnus pico connected\"}");
+#endif
+
+    // Main loop
+    while (true) {
+        // Handle MQTT disconnection
+        if (!client.isConnected()) {
+            printf("MQTT disconnected...\nReconnecting...\n");
+            rc = client.connect(data);
+            if (rc != 0) {
+                printf("rc from MQTT connect is %d\n", rc);
+            }
+        }
+
+        // Handle buttons
+        int counter = 0;
+        for (auto pin : BUTTONS_LIST) { // All buttons, change to pin 12 if Joseph complains.
+            if (!gpio_get(pin)) {
+                while (counter <= 10000){
+                    if (gpio_get(pin)) {
+                        counter++;
+                    }
+                }
+                publish_temp = true;
+            }
+        }
+
+        // Handle temperature
+        if (previousCoreTemp > high_temp) {
+            gpio_put(led3, ON);
+        } if (previousCoreTemp < high_temp && previousCoreTemp > low_temp) {
+            gpio_put(led3, OFF);
+            gpio_put(led1, OFF);
+        } if (previousCoreTemp < low_temp) {
+            gpio_put(led1, ON);
+        }
+
+
+        // poke the bear
+        client.yield(100);
+
+        if (publish_temp) {
+            read_cpu_temperature();
+            publishMessage(client, "magnus/pico/listener/temp", "{\"topic\":\"magnus/pico/listener/temp\",\"msg\":\"Current Pico temp: " + std::to_string(previousCoreTemp) + "\"}");
+            publish_temp = false;
+        }
+    }
+
+    return 0;
+}
+
 
 void messageArrived(MQTT::MessageData &md) {
     printf("messageArrived()\n");
@@ -63,6 +204,7 @@ void messageArrived(MQTT::MessageData &md) {
     // Handle the message
     handle_message(payloadMap);
 }
+
 
 std::map<std::string, std::string> json_parser(MQTT::Message &message) {
     std::string payloadStr((char*)message.payload, message.payloadlen);
@@ -86,7 +228,6 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
                 i++;
             }
             i++;
-           // i++;
 
             // Get value.
             while (payloadStr[i] != '"') {
@@ -104,7 +245,9 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
     return payloadMap;
 }
 
+
 // Commands: "ON", "OFF", "TOGG".
+/*
 void handle_message(std::map<std::string, std::string> payloadMap) {
     printf("handle_message()\n");
     printf("Message: %s\n", mapToString(payloadMap).c_str());
@@ -147,6 +290,62 @@ void handle_message(std::map<std::string, std::string> payloadMap) {
     }
     return;
 }
+*/
+
+
+void handle_led(std::string value, int pin) {
+    if (value.find("ON") != std::string::npos) {
+        gpio_put(pin, ON);
+    } else if (value.find("OFF") != std::string::npos) {
+        gpio_put(pin, OFF);
+    } else if (value.find("TOGG") != std::string::npos) {
+        gpio_put(pin, !gpio_get(pin));
+    } else {
+        printf("handle_led(): Unknown message\n");
+    }
+}
+
+
+void handle_temp(std::string value) {
+    if (value.find("HIGH") != std::string::npos) {
+        high_temp = std::stof(value.substr(value.find(":") + 1));
+    } else if (value.find("LOW") != std::string::npos) {
+        low_temp = std::stof(value.substr(value.find(":") + 1));
+    } else if (value.find("TEMP") != std::string::npos) {
+        publish_temp = true;
+    } else {
+        printf("handle_temp(): Unknown message\n");
+    }
+}
+
+
+void handle_message(std::map<std::string, std::string> payloadMap) {
+    printf("handle_message() Message: %s\n", mapToString(payloadMap).c_str());
+
+    std::map<std::string, int> ledMap = {
+        {"LED1", LED1},
+        {"LED2", LED2},
+        {"LED3", LED3},
+        {"ROT_BUTTON", ROT_BUTTON}
+    };
+
+    for (auto const& [key, value] : payloadMap) {
+        if (key == "msg"){
+            // Check if the message is for a LED.
+            for (auto const& [led, pin] : ledMap) {
+                if (value.find(led) != std::string::npos) {
+                    handle_led(value, pin);
+                    return;
+                }
+            }
+
+            // Check if the message is for the temperature.
+            handle_temp(value);
+        }
+    }
+    return;
+}
+
 
 void publishMessage(MQTT::Client<IPStack, Countdown> &client, std::string topic, std::string payload) {
     MQTT::Message message;
@@ -156,8 +355,14 @@ void publishMessage(MQTT::Client<IPStack, Countdown> &client, std::string topic,
     message.payload = (void *) payload.c_str();
     message.payloadlen = payload.length();
     int rc = client.publish(topic.c_str(), message);
-    printf("publishMessage rc=%d\n", rc);
+    if (rc != 0) {
+        printf("publishMessage() failed to publish message\n");
+        return;
+    }
+    printf("publishMessage() published message: %s\n", payload.c_str());
+    return;
 }
+
 
 std::string mapToString(std::map<std::string, std::string> &map) {
     std::string josn_str = "{";
@@ -172,211 +377,17 @@ std::string mapToString(std::map<std::string, std::string> &map) {
     return josn_str;
 }
 
-int main() {
 
-    const uint led1 = 22;
-    const uint led2 = 21;
-    const uint led3 = 20;
+void read_cpu_temperature() {
+    gpio_put(LED2, !gpio_get(LED2)); // Toggle LED2 on every read.
+    adc_select_input(4); // Input 4 is the temp sensor.
 
-    const uint button1 = 9;
-    const uint button2 = 8;
-    const uint button3 = 7;
+    const float conversion_factor = 3.3f / (1 << 12); // 3.3V reference / 12bit resolution.
 
-    // Initialize LEDs
-    for (auto pin : {led1, led2, led3}) {
-        gpio_init(pin);
-        gpio_set_dir(pin, GPIO_OUT);
-    }
+    uint16_t result = adc_read();
+    float voltage = result * conversion_factor;
 
-    // Initialize buttons
-    for (auto pin : {button1, button2, button3}) {
-        gpio_init(pin);
-        gpio_set_dir(pin, GPIO_IN);
-        gpio_pull_up(pin);
-    }
-
-    // Initialize chosen serial port
-    stdio_init_all();
-    printf("Boot\n");
-
-
-/*
-    // Init OLED
-#ifdef USE_SSD1306
-    // I2C is "open drain",
-    // pull ups to keep signal high when no data is being sent
-    i2c_init(i2c1, 400 * 1000);
-    gpio_set_function(14, GPIO_FUNC_I2C); // the display has external pull-ups
-    gpio_set_function(15, GPIO_FUNC_I2C); // the display has external pull-ups
-    ssd1306 display(i2c1);
-    display.fill(0);
-    display.text("Hello", 0, 0);
-#endif
-*/
-
-// Connect to MQTT broker
-#ifdef USE_MQTT
-    IPStack ipstack(SSID, PASSWD); // example
-    auto client = MQTT::Client<IPStack, Countdown>(ipstack);
-
-    int rc = ipstack.connect("18.198.188.151", 21883);
-    if (rc != 1) {
-        printf("rc from TCP connect is %d\n", rc);
-    }
-
-    // Generate a random number between 1 and 100000
-    int randomNumber = (rand() % 100000) + 1;
-
-    printf("MQTT connecting\n");
-    MQTTPacket_connectData data = MQTTPacket_connectData_initializer;
-    data.MQTTVersion = 3;
-    std::string clientId = "PicoW-sample" + std::to_string(randomNumber);
-    data.clientID.cstring = (char *)clientId.c_str();
-    data.username.cstring = (char *) "SmartIoT";
-    data.password.cstring = (char *) "SmartIoTMQTT";
-    rc = client.connect(data);
-    if (rc != 0) {
-        printf("rc from MQTT connect is %d\n", rc);
-        exit(-1);
-    }
-    printf("MQTT connected\n");
-
-    // We subscribe QoS2. Messages sent with lower QoS will be delivered using the QoS they were sent with
-    rc = client.subscribe(topic, MQTT::QOS0, messageArrived);
-    if (rc != 0) {
-        printf("rc from MQTT subscribe is %d\n", rc);
-        exit(-1);
-    }
-    printf("MQTT subscribed\n");
-
-    //auto mqtt_send = make_timeout_time_ms(2000);
-    //int mqtt_qos = 0;
-    //int msg_count = 0;
-
-    // Publish message to verify connection
-    publishMessage(client, "magnus/pico/listener/verifyconnection", "{\"topic\":\"magnus/pico/listener/verifyconnection\",\"msg\":\"Magnus pico connected\"}");
-    printf("Publishing message: Magnus pico connected\n To topic: magnus/pico/listener/verifyconnection\n");
-#endif
-
-/*
-#ifdef USE_MODBUS
-    auto uart{std::make_shared<PicoUart>(UART_NR, UART_TX_PIN, UART_RX_PIN, BAUD_RATE, STOP_BITS)};
-    auto rtu_client{std::make_shared<ModbusClient>(uart)};
-    ModbusRegister rh(rtu_client, 241, 256);
-    auto modbus_poll = make_timeout_time_ms(3000);
-    ModbusRegister produal(rtu_client, 1, 0);
-    produal.write(100);
-    sleep_ms((100));
-    produal.write(100);
-#endif
-*/
-
-    std::map <std::string, std::string> buttonMsgMap;
-    buttonMsgMap["topic"] = "magnus/pico/listener/button";
-    buttonMsgMap["msg"] = "My unique message";
-
-    // Main loop
-    while (true) {
-
-        if (!client.isConnected()) {
-            printf("Not connected...\n");
-            rc = client.connect(data);
-            if (rc != 0) {
-                printf("rc from MQTT connect is %d\n", rc);
-            }
-        }
-
-        int counter = 0;
-        for (auto pin : {button1, button2, button3}) {
-            if (!gpio_get(pin)) {
-                while (counter <= 10000){
-                    if (gpio_get(pin)) {
-                        counter++;
-                    }
-                }
-                publishMessage(client, buttonMsgMap["topic"], mapToString(buttonMsgMap));
-            }
-        }
-
-
-        cyw43_arch_poll(); // obsolete? - see below
-        client.yield(100); // socket that client uses calls cyw43_arch_poll()
-
-    }
-
-    return 0;
+    // Convert the voltage to temperature. https://www.halvorsen.blog/documents/technology/iot/pico/pico_temperature_sensor_builtin.php
+    previousCoreTemp = 27 - (voltage - 0.706) / 0.001721;
+    return;
 }
-
-
-
-
-/*
-    while (true) {
-#ifdef USE_MODBUS
-        if (time_reached(modbus_poll)) {
-            gpio_put(led_pin, !gpio_get(led_pin)); // toggle  led
-            modbus_poll = delayed_by_ms(modbus_poll, 3000);
-            printf("RH=%5.1f%%\n", rh.read() / 10.0);
-        }
-#endif
-#ifdef USE_MQTT
-        if (time_reached(mqtt_send)) {
-            mqtt_send = delayed_by_ms(mqtt_send, 2000);
-            if (!client.isConnected()) {
-                printf("Not connected...\n");
-                rc = client.connect(data);
-                if (rc != 0) {
-                    printf("rc from MQTT connect is %d\n", rc);
-                }
-
-            }
-            char buf[100];
-            int rc = 0;
-            MQTT::Message message;
-            message.retained = false;
-            message.dup = false;
-            message.payload = (void *) buf;
-            switch (mqtt_qos) {
-                case 0:
-                    // Send and receive QoS 0 message
-                    sprintf(buf, "Msg nr: %d QoS 0 message", ++msg_count);
-                    printf("%s\n", buf);
-                    message.qos = MQTT::QOS0;
-                    message.payloadlen = strlen(buf) + 1;
-                    rc = client.publish(topic, message);
-                    printf("Publish rc=%d\n", rc);
-                    ++mqtt_qos;
-                    break;
-                case 1:
-                    // Send and receive QoS 1 message
-                    sprintf(buf, "Msg nr: %d QoS 1 message", ++msg_count);
-                    printf("%s\n", buf);
-                    message.qos = MQTT::QOS1;
-                    message.payloadlen = strlen(buf) + 1;
-                    rc = client.publish(topic, message);
-                    printf("Publish rc=%d\n", rc);
-                    ++mqtt_qos;
-                    break;
-#if MQTTCLIENT_QOS2
-                    case 2:
-                        // Send and receive QoS 2 message
-                        sprintf(buf, "Msg nr: %d QoS 2 message", ++msg_count);
-                        printf("%s\n", buf);
-                        message.qos = MQTT::QOS2;
-                        message.payloadlen = strlen(buf) + 1;
-                        rc = client.publish(topic, message);
-                        printf("Publish rc=%d\n", rc);
-                        ++mqtt_qos;
-                        break;
-#endif
-                default:
-                    mqtt_qos = 0;
-                    break;
-            }
-        }
-
-        cyw43_arch_poll(); // obsolete? - see below
-        client.yield(100); // socket that client uses calls cyw43_arch_poll()
-#endif
-    }
-*/
