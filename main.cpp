@@ -68,6 +68,7 @@ std::string mapToString(std::map<std::string, std::string> &map);
 void handle_led(std::string value, int pin);
 void read_cpu_temperature();
 void handle_temp(std::string value);
+bool alarm_callback(repeating_timer_t *rt);
 
 
 int main() {
@@ -132,7 +133,8 @@ int main() {
 #endif
 
     // Init repeating timer
-    add_repeating_timer_ms(1000, alarm_callback, NULL);
+    repeating_timer one_sec;
+    add_repeating_timer_ms(1000, alarm_callback, NULL, &one_sec);
 
     // Main loop
     while (true) {
