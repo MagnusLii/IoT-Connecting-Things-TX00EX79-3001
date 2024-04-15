@@ -11,4 +11,4 @@ build
 /node_modules
 /paho.mqtt.embedded-c
 /uart
-*/message.json
+**/message.json
