@@ -6,6 +6,7 @@
 #include "hardware/timer.h"
 #include "hardware/adc.h"
 #include "uart/PicoUart.h"
+#include <algorithm>
 #include <map>
 
 #include <cstdlib>
@@ -243,11 +244,13 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
 
 
 void handle_led(std::string value, int pin) {
-    if (value.find("ON") != std::string::npos) {
+    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+
+    if (value.find("on") != std::string::npos) {
         gpio_put(pin, ON);
-    } else if (value.find("OFF") != std::string::npos) {
+    } else if (value.find("off") != std::string::npos) {
         gpio_put(pin, OFF);
-    } else if (value.find("TOGG") != std::string::npos) {
+    } else if (value.find("togg") != std::string::npos) {
         gpio_put(pin, !gpio_get(pin));
     } else {
         printf("handle_led(): Unknown message\n");
@@ -256,11 +259,13 @@ void handle_led(std::string value, int pin) {
 
 
 void handle_temp(std::string value) {
-    if (value.find("HIGH") != std::string::npos) {
+    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+
+    if (value.find("high") != std::string::npos) {
         high_temp = std::stof(value.substr(value.find(":") + 1));
-    } else if (value.find("LOW") != std::string::npos) {
+    } else if (value.find("low") != std::string::npos) {
         low_temp = std::stof(value.substr(value.find(":") + 1));
-    } else if (value.find("TEMP") != std::string::npos) {
+    } else if (value.find("temp") != std::string::npos) {
         publish_temp = true;
     } else {
         printf("handle_temp(): Unknown message\n");
