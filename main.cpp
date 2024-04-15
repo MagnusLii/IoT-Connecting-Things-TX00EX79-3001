@@ -44,10 +44,11 @@
 #define LED2 21
 #define LED3 20
 
+#define LEDS_LIST {LED1, LED2, LED3}
+
 #define BUTTON1 9
 #define BUTTON2 8
 #define BUTTON3 7
-
 #define ROT_BUTTON 12
 
 #define BUTTONS_LIST {BUTTON1, BUTTON2, BUTTON3, ROT_BUTTON}
@@ -72,24 +73,14 @@ void handle_temp(std::string value);
 int main() {
     printf("Boot\n");
 
-    const uint led1 = LED1;
-    const uint led2 = LED2;
-    const uint led3 = LED3;
-
-    const uint button1 = BUTTON1;
-    const uint button2 = BUTTON2;
-    const uint button3 = BUTTON3;
-
-    const uint rot_button = ROT_BUTTON;
-
     // Initialize LEDs
-    for (auto pin : {led1, led2, led3}) {
+    for (auto pin : LEDS_LIST) {
         gpio_init(pin);
         gpio_set_dir(pin, GPIO_OUT);
     }
 
     // Initialize buttons
-    for (auto pin : {button1, button2, button3}) {
+    for (auto pin : BUTTONS_LIST) {
         gpio_init(pin);
         gpio_set_dir(pin, GPIO_IN);
         gpio_pull_up(pin);
@@ -155,6 +146,7 @@ int main() {
         int counter = 0;
         for (auto pin : BUTTONS_LIST) { // All buttons, change to pin 12 if Joseph complains.
             if (!gpio_get(pin)) {
+                printf("Button %d pressed\n", pin);
                 while (counter <= 10000){
                     if (gpio_get(pin)) {
                         counter++;
@@ -166,12 +158,12 @@ int main() {
 
         // Handle temperature
         if (previousCoreTemp > high_temp) {
-            gpio_put(led3, ON);
+            gpio_put(LED3, ON);
         } if (previousCoreTemp < high_temp && previousCoreTemp > low_temp) {
-            gpio_put(led3, OFF);
-            gpio_put(led1, OFF);
+            gpio_put(LED3, OFF);
+            gpio_put(LED1, OFF);
         } if (previousCoreTemp < low_temp) {
-            gpio_put(led1, ON);
+            gpio_put(LED1, ON);
         }
 
 
