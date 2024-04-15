@@ -131,6 +131,9 @@ int main() {
     publishMessage(client, "magnus/pico/listener/verifyconnection", "{\"topic\":\"magnus/pico/listener/verifyconnection\",\"msg\":\"Magnus pico connected\"}");
 #endif
 
+    // Init repeating timer
+    add_repeating_timer_ms(1000, read_cpu_temperature, NULL);
+
     // Main loop
     while (true) {
         // Handle MQTT disconnection
@@ -165,7 +168,6 @@ int main() {
         } if (previousCoreTemp < low_temp) {
             gpio_put(LED1, ON);
         }
-
 
         // poke the bear
         client.yield(100);
@@ -370,7 +372,7 @@ std::string mapToString(std::map<std::string, std::string> &map) {
 }
 
 
-void read_cpu_temperature() {
+int read_cpu_temperature() {
     gpio_put(LED2, !gpio_get(LED2)); // Toggle LED2 on every read.
     adc_select_input(4); // Input 4 is the temp sensor.
 
@@ -381,5 +383,7 @@ void read_cpu_temperature() {
 
     // Convert the voltage to temperature. https://www.halvorsen.blog/documents/technology/iot/pico/pico_temperature_sensor_builtin.php
     previousCoreTemp = 27 - (voltage - 0.706) / 0.001721;
-    return;
+    
+    return 1; // Return 1 for repeating timer.
 }
+
