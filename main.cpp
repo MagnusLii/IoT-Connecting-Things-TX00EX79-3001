@@ -5,6 +5,7 @@
 #include "pico/time.h"
 #include "hardware/timer.h"
 #include "uart/PicoUart.h"
+#include <map>
 
 #include <cstdlib>
 #include <ctime>
@@ -36,9 +37,19 @@
 #define USE_MQTT
 #define USE_SSD1306
 
+#define SSID "Mgzz-57"
+#define PASSWD "557949122aA"
+
 static const char *topic = "magnus/pico/listener/LED";
 
+void messageArrived(MQTT::MessageData &md);
+std::map<std::string, std::string> json_parser(MQTT::Message &message);
+void handle_message(std::map<std::string, std::string> payloadMap);
+void publishMessage(MQTT::Client<IPStack, Countdown> &client, std::string topic, std::string payload);
+std::string mapToString(std::map<std::string, std::string> &map);
+
 void messageArrived(MQTT::MessageData &md) {
+    printf("messageArrived()\n");
     MQTT::Message &message = md.message;
 
     // Print the message
@@ -57,9 +68,9 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
     std::string payloadStr((char*)message.payload, message.payloadlen);
     std::map<std::string, std::string> payloadMap;
     std::string key;
-    std;;string value;
+    std::string value;
 
-    for (int i = 0; i < payloadStr.length(); i++) {
+    for (int i = 0; i < (int)payloadStr.length(); i++) {
         if (payloadStr[i] == '"') {
             i++;
             
@@ -75,7 +86,7 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
                 i++;
             }
             i++;
-            i++;
+           // i++;
 
             // Get value.
             while (payloadStr[i] != '"') {
@@ -95,44 +106,56 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
 
 // Commands: "ON", "OFF", "TOGG".
 void handle_message(std::map<std::string, std::string> payloadMap) {
+    printf("handle_message()\n");
+    printf("Message: %s\n", mapToString(payloadMap).c_str());
     for (auto const& [key, value] : payloadMap) {
-        if (key == "LED1") {
-            if (value == "ON") {
-                gpio_put(22, 1);
-            } else if (value == "OFF") {
-                gpio_put(22, 0);
-            } else if (value == "TOGG") {
-                gpio_put(22, !gpio_get(22));
-            }
-        } else if (key == "LED2") {
-            if (value == "ON") {
-                gpio_put(21, 1);
-            } else if (value == "OFF") {
-                gpio_put(21, 0);
-            } else if (value == "TOGG") {
-                gpio_put(21, !gpio_get(21));
-            }
-        } else if (key == "LED3") {
-            if (value == "ON") {
-                gpio_put(20, 1);
-            } else if (value == "OFF") {
-                gpio_put(20, 0);
-            } else if (value == "TOGG") {
-                gpio_put(20, !gpio_get(20));
+        if (key == "msg"){
+            if (value.find("LED1") != std::string::npos) {
+                if (value.find("ON") != std::string::npos) {
+                    gpio_put(22, 1);
+                } else if (value.find("OFF") != std::string::npos) {
+                    gpio_put(22, 0);
+                } else if (value.find("TOGG") != std::string::npos) {
+                    gpio_put(22, !gpio_get(22));
+                } else {
+                    printf("Unknown message\n");
+                }
+            } else if (value.find("LED2") != std::string::npos) {
+                if (value.find("ON") != std::string::npos) {
+                    gpio_put(21, 1);
+                } else if (value.find("OFF") != std::string::npos) {
+                    gpio_put(21, 0);
+                } else if (value.find("TOGG") != std::string::npos) {
+                    gpio_put(21, !gpio_get(21));
+                } else {
+                    printf("Unknown message\n");
+                }
+            } else if (value.find("LED3") != std::string::npos) {
+                if (value.find("ON") != std::string::npos) {
+                    gpio_put(20, 1);
+                } else if (value.find("OFF") != std::string::npos) {
+                    gpio_put(20, 0);
+                } else if (value.find("TOGG") != std::string::npos) {
+                    gpio_put(20, !gpio_get(20));
+                } else {
+                    printf("Unknown message\n");
+                }
+            } else {
+                printf("Unknown message\n");
             }
         }
     }
     return;
 }
 
-void publishMessage(MQTT::Client<MQTT::Network, MQTT::Timer, 256, 5> &client, std::string topic, std::string payload) {
+void publishMessage(MQTT::Client<IPStack, Countdown> &client, std::string topic, std::string payload) {
     MQTT::Message message;
     message.qos = MQTT::QOS0;
     message.retained = false;
     message.dup = false;
     message.payload = (void *) payload.c_str();
-    message.payloadlen = payload.length() + 1;
-    int rc = client.publish(topic, message);
+    message.payloadlen = payload.length();
+    int rc = client.publish(topic.c_str(), message);
     printf("publishMessage rc=%d\n", rc);
 }
 
@@ -173,7 +196,7 @@ int main() {
 
     // Initialize chosen serial port
     stdio_init_all();
-    printf("\nBoot\n");
+    printf("Boot\n");
 
 
 /*
@@ -192,7 +215,7 @@ int main() {
 
 // Connect to MQTT broker
 #ifdef USE_MQTT
-    IPStack ipstack("SmartIotMQTT", "SmartIot"); // example
+    IPStack ipstack(SSID, PASSWD); // example
     auto client = MQTT::Client<IPStack, Countdown>(ipstack);
 
     int rc = ipstack.connect("18.198.188.151", 21883);
@@ -213,9 +236,7 @@ int main() {
     rc = client.connect(data);
     if (rc != 0) {
         printf("rc from MQTT connect is %d\n", rc);
-        while (true) {
-            tight_loop_contents();
-        }
+        exit(-1);
     }
     printf("MQTT connected\n");
 
@@ -223,15 +244,16 @@ int main() {
     rc = client.subscribe(topic, MQTT::QOS2, messageArrived);
     if (rc != 0) {
         printf("rc from MQTT subscribe is %d\n", rc);
+        exit(-1);
     }
     printf("MQTT subscribed\n");
 
-    auto mqtt_send = make_timeout_time_ms(2000);
-    int mqtt_qos = 0;
-    int msg_count = 0;
+    //auto mqtt_send = make_timeout_time_ms(2000);
+    //int mqtt_qos = 0;
+    //int msg_count = 0;
 
     // Publish message to verify connection
-    publishMessage(client, "magnus/pico/listener/verifyconnection", "Magnus pico connected");
+    publishMessage(client, "magnus/pico/listener/verifyconnection", "{\"topic\":\"magnus/pico/listener/verifyconnection\",\"msg\":\"Magnus pico connected\"}");
     printf("Publishing message: Magnus pico connected\n To topic: magnus/pico/listener/verifyconnection\n");
 #endif
 
@@ -255,11 +277,24 @@ int main() {
     // Main loop
     while (true) {
 
+        if (!client.isConnected()) {
+            printf("Not connected...\n");
+            rc = client.connect(data);
+            if (rc != 0) {
+                printf("rc from MQTT connect is %d\n", rc);
+            }
+        }
+
         for (auto pin : {button1, button2, button3}) {
             if (!gpio_get(pin)) {
                 publishMessage(client, buttonMsgMap["topic"], mapToString(buttonMsgMap));
             }
         }
+
+
+        cyw43_arch_poll(); // obsolete? - see below
+        client.yield(100); // socket that client uses calls cyw43_arch_poll()
+
     }
 
     return 0;

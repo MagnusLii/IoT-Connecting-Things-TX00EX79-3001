@@ -49,6 +49,14 @@ mqtt_client.on('error', (error) => {
     console.error('MQTT connection error:', error);
 });
 
+
+/*
+Expected format:
+{
+“topic”: “<whatever your topic is>”,
+“msg”: “<whatever you want your message to be>”
+}
+*/
 // Handle when a subscribed message comes in (message event)
 mqtt_client.on('message', (topic, message) => {
 
@@ -67,10 +75,11 @@ mqtt_client.on('message', (topic, message) => {
         data.push(newMessage); // Add to json file
         write(data);
     }).catch(e => {
+        console.log('Error:', e);
         //not doing anything
     });
     } catch (error) {
-        //console.error('Invalid JSON:', error);
+        console.error('Invalid JSON:', error);
         return;
     }
 
