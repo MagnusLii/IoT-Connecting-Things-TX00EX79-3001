@@ -36,7 +36,6 @@ function write(data, filePath = './message.json') {
 
 // create an MQTT instance
 const mqtt_client = mqtt.connect(`mqtt://${mqtt_client_address}:${mqtt_client_port}`, mqtt_options);
-//const mqtt_client = mqtt.connect(`mqtt://18.198.188.151:21883`);
 
 // Check that you are connected to MQTT and subscribe to a topic (connect event)
 mqtt_client.on('connect', () => {
@@ -82,18 +81,6 @@ mqtt_client.on('message', (topic, message) => {
         console.error('Invalid JSON:', error);
         return;
     }
-
-    /*
-    fetch(`http://127.0.0.1:3000/`,{
-        method: 'POST',
-        body: message,
-        headers: { 'Content-type': 'application/json; charset=UTF-8' },
-    }).catch(error => {
-        // Handle error here
-        //console.error('Error:', error);
-    });
-    */
-   
 
     console.log('Received message:', message.toString(), 'from topic:', topic);
 });

@@ -242,53 +242,6 @@ std::map<std::string, std::string> json_parser(MQTT::Message &message) {
 }
 
 
-// Commands: "ON", "OFF", "TOGG".
-/*
-void handle_message(std::map<std::string, std::string> payloadMap) {
-    printf("handle_message()\n");
-    printf("Message: %s\n", mapToString(payloadMap).c_str());
-    for (auto const& [key, value] : payloadMap) {
-        if (key == "msg"){
-            if (value.find("LED1") != std::string::npos) {
-                if (value.find("ON") != std::string::npos) {
-                    gpio_put(22, 1);
-                } else if (value.find("OFF") != std::string::npos) {
-                    gpio_put(22, 0);
-                } else if (value.find("TOGG") != std::string::npos) {
-                    gpio_put(22, !gpio_get(22));
-                } else {
-                    printf("Unknown message\n");
-                }
-            } else if (value.find("LED2") != std::string::npos) {
-                if (value.find("ON") != std::string::npos) {
-                    gpio_put(21, 1);
-                } else if (value.find("OFF") != std::string::npos) {
-                    gpio_put(21, 0);
-                } else if (value.find("TOGG") != std::string::npos) {
-                    gpio_put(21, !gpio_get(21));
-                } else {
-                    printf("Unknown message\n");
-                }
-            } else if (value.find("LED3") != std::string::npos) {
-                if (value.find("ON") != std::string::npos) {
-                    gpio_put(20, 1);
-                } else if (value.find("OFF") != std::string::npos) {
-                    gpio_put(20, 0);
-                } else if (value.find("TOGG") != std::string::npos) {
-                    gpio_put(20, !gpio_get(20));
-                } else {
-                    printf("Unknown message\n");
-                }
-            } else {
-                printf("Unknown message\n");
-            }
-        }
-    }
-    return;
-}
-*/
-
-
 void handle_led(std::string value, int pin) {
     if (value.find("ON") != std::string::npos) {
         gpio_put(pin, ON);
