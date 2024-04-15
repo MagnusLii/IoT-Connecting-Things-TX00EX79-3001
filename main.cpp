@@ -177,6 +177,7 @@ int main() {
     const uint led1 = 22;
     const uint led2 = 21;
     const uint led3 = 20;
+
     const uint button1 = 9;
     const uint button2 = 8;
     const uint button3 = 7;
@@ -241,7 +242,7 @@ int main() {
     printf("MQTT connected\n");
 
     // We subscribe QoS2. Messages sent with lower QoS will be delivered using the QoS they were sent with
-    rc = client.subscribe(topic, MQTT::QOS2, messageArrived);
+    rc = client.subscribe(topic, MQTT::QOS0, messageArrived);
     if (rc != 0) {
         printf("rc from MQTT subscribe is %d\n", rc);
         exit(-1);
@@ -285,8 +286,14 @@ int main() {
             }
         }
 
+        int counter = 0;
         for (auto pin : {button1, button2, button3}) {
             if (!gpio_get(pin)) {
+                while (counter <= 10000){
+                    if (gpio_get(pin)) {
+                        counter++;
+                    }
+                }
                 publishMessage(client, buttonMsgMap["topic"], mapToString(buttonMsgMap));
             }
         }
