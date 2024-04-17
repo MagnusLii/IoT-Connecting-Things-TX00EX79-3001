@@ -163,13 +163,18 @@ int main() {
         }
 
         // Handle temperature
+
         if (previousCoreTemp > high_temp) {
             gpio_put(LED3, ON);
+        } if (previousCoreTemp < high_temp) {
+            gpio_put(LED3, OFF);
         } if (previousCoreTemp < high_temp && previousCoreTemp > low_temp) {
             gpio_put(LED3, OFF);
             gpio_put(LED1, OFF);
         } if (previousCoreTemp < low_temp) {
             gpio_put(LED1, ON);
+        } if (previousCoreTemp > low_temp) {
+            gpio_put(LED1, OFF);
         }
 
         // poke the bear
@@ -262,10 +267,13 @@ void handle_temp(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), ::tolower);
 
     if (value.find("high") != std::string::npos) {
+        printf("handle_temp() high_temp: %f\n", std::stof(value.substr(value.find(":") + 1)));
         high_temp = std::stof(value.substr(value.find(":") + 1));
     } else if (value.find("low") != std::string::npos) {
+        printf("handle_temp() low_temp: %f\n", std::stof(value.substr(value.find(":") + 1)));
         low_temp = std::stof(value.substr(value.find(":") + 1));
     } else if (value.find("temp") != std::string::npos) {
+        printf("handle_temp() publish_temp\n");
         publish_temp = true;
     } else {
         printf("handle_temp(): Unknown message\n");
